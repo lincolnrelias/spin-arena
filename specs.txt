@@ -1,0 +1,995 @@
+================================================================================
+  SPINNING TOPS ROYALE — SPEC COMPLETO PARA IMPLEMENTAÇÃO
+  Versão 1.0 | Formato: prompt para Cursor / dev
+================================================================================
+
+--------------------------------------------------------------------------------
+  VISÃO GERAL
+--------------------------------------------------------------------------------
+
+Jogo de arena autônoma com física de peões giratórios. Dois peões (1v1 inicial)
+combatem dentro de uma arena circular. Cada peão tem uma identidade visual única,
+habilidade passiva/ativa e evolução de stats ao longo da luta. O resultado de cada
+batalha é determinado inteiramente pela física e pelas mecânicas das habilidades —
+sem RNG puro além de variação de spawn.
+
+O projeto deve funcionar como uma simulação "assistida": o usuário apenas assiste.
+Futuro: múltiplos agentes simultâneos, torneios gerados automaticamente, números
+de dano/vida/velocidade em escala absurda (ex: 1.2M de HP, 430K de dano por tick).
+
+Plataforma alvo: browser (gravação de tela para shorts). Stack: Vanilla JS + Canvas 2D.
+Sem frameworks, sem physics engines externas. Zero dependências de terceiros.
+
+
+--------------------------------------------------------------------------------
+  ESTRUTURA DE ARQUIVOS
+--------------------------------------------------------------------------------
+
+/
+├── index.html
+├── src/
+│   ├── main.js             ← entry point, game loop
+│   ├── arena.js            ← arena rendering + boundary logic
+│   ├── top.js              ← classe base Top
+│   ├── characters/
+│   │   ├── espelho.js
+│   │   ├── berserker.js
+│   │   ├── coroa.js
+│   │   ├── fenda.js
+│   │   ├── sombra.js
+│   │   ├── parasita.js
+│   │   ├── tremor.js
+│   │   └── poco.js
+│   ├── physics.js          ← resolução de colisão, arena boundary
+│   ├── particles.js        ← sistema de partículas pooled
+│   ├── camera.js           ← screen shake + zoom
+│   ├── hud.js              ← barras de HP, nomes, stats
+│   ├── numbers.js          ← formatação de números grandes
+│   └── utils.js            ← vec2, clamp, lerp, etc.
+└── assets/
+    └── (opcional: sons, fontes)
+
+
+--------------------------------------------------------------------------------
+  GAME LOOP — FIXED TIMESTEP
+--------------------------------------------------------------------------------
+
+Use um loop de fixed timestep para garantir física determinística independente
+do frame rate. Separe completamente UPDATE e RENDER.
+
+Implementação:
+
+  const FIXED_DT = 1 / 60;         // 60 ticks físicos por segundo
+  let accumulator = 0;
+  let lastTime = 0;
+
+  function loop(timestamp) {
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.05); // cap em 50ms
+    lastTime = timestamp;
+    accumulator += dt;
+
+    while (accumulator >= FIXED_DT) {
+      update(FIXED_DT);
+      accumulator -= FIXED_DT;
+    }
+
+    const alpha = accumulator / FIXED_DT; // interpolação para render suave
+    render(alpha);
+    requestAnimationFrame(loop);
+  }
+
+A interpolação (alpha) é usada apenas no render para suavizar posições entre ticks.
+Toda lógica de jogo roda no update(FIXED_DT). Nunca use dt variável para física.
+
+
+--------------------------------------------------------------------------------
+  CANVAS SETUP
+--------------------------------------------------------------------------------
+
+- Um único canvas principal, resolução 1080x1920 (formato vertical para shorts)
+  ou 1280x720 (horizontal). Configurável via constante em main.js.
+- Usar devicePixelRatio para nitidez em telas retina:
+
+  canvas.width = WIDTH * dpr;
+  canvas.height = HEIGHT * dpr;
+  canvas.style.width = WIDTH + 'px';
+  canvas.style.height = HEIGHT + 'px';
+  ctx.scale(dpr, dpr);
+
+- Usar offscreen canvas separado para o fundo da arena (estático entre frames).
+  Renderizar fundo apenas uma vez ou quando necessário (dirty flag).
+- ctx.imageSmoothingEnabled = false para elementos pixelados; true para blur intencional.
+
+
+--------------------------------------------------------------------------------
+  SISTEMA DE FÍSICA — PEÕES
+--------------------------------------------------------------------------------
+
+MODELO DE DADOS DE CADA TOP (Float32Array para escalabilidade futura):
+
+  {
+    // posição e movimento
+    x, y,               // centro do peão
+    vx, vy,             // velocidade linear (pixels/s)
+    angle,              // ângulo de orientação visual (rad)
+    spin,               // velocidade angular (rad/s) — representa "vida"
+    spinMax,            // spin inicial (= HP máximo)
+
+    // física
+    radius,             // raio de colisão
+    mass,               // afeta troca de momento
+    friction,           // decaimento de spin por tick (0.001 a 0.005)
+    restitution,        // bounciness nas colisões (0.6 a 0.95)
+
+    // estado
+    hp,                 // HP atual (= spin normalizado * spinMax, derivado)
+    alive,              // bool
+    wobble,             // float 0..1 — intensidade da oscilação de baixo HP
+    wobbleAngle,        // ângulo atual do wobble
+  }
+
+HP É DERIVADO DO SPIN:
+  hp = spin / spinMax * hpMax
+
+O peão "morre" quando spin cai abaixo de um threshold mínimo (ex: 2% do spinMax).
+Isso cria a visualização natural: peão vacilando e caindo quando quase morto.
+
+SPIN DECAY:
+  A cada tick: top.spin *= (1 - top.friction)
+  Dano reduz spin diretamente: top.spin -= damage
+  Curar aumenta spin (dentro do max): top.spin = min(spin + heal, spinMax)
+
+MOVIMENTO:
+  top.x += top.vx * dt;
+  top.y += top.vy * dt;
+  top.angle += top.spin * dt;
+
+ATRITO COM O CHÃO (desacelera o movimento linear):
+  top.vx *= Math.pow(0.985, 60 * dt);   // independente de framerate
+  top.vy *= Math.pow(0.985, 60 * dt);
+
+WOBBLE (peão com baixo HP oscila antes de cair):
+  wobble = 1 - (top.spin / top.spinMax)  // 0 = saudável, 1 = quase morto
+  wobbleAngle += wobbleSpeed * dt * (0.5 + wobble * 2)
+  renderTiltAngle = sin(wobbleAngle) * wobble * MAX_TILT  // MAX_TILT ~ 0.3 rad
+
+
+--------------------------------------------------------------------------------
+  DETECÇÃO E RESOLUÇÃO DE COLISÃO
+--------------------------------------------------------------------------------
+
+COLISÃO ENTRE TOPS (círculo vs círculo):
+
+  function resolveCollision(a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist >= a.radius + b.radius || dist === 0) return;
+
+    // normal de colisão
+    const nx = dx / dist;
+    const ny = dy / dist;
+
+    // separar (evitar sobreposição)
+    const overlap = (a.radius + b.radius - dist) / 2;
+    a.x -= nx * overlap;
+    a.y -= ny * overlap;
+    b.x += nx * overlap;
+    b.y += ny * overlap;
+
+    // velocidade relativa na direção da normal
+    const rvx = b.vx - a.vx;
+    const rvy = b.vy - a.vy;
+    const rvDotN = rvx * nx + rvy * ny;
+
+    if (rvDotN > 0) return; // já se separando
+
+    const e = Math.min(a.restitution, b.restitution);
+    const j = -(1 + e) * rvDotN / (1 / a.mass + 1 / b.mass);
+
+    a.vx -= (j / a.mass) * nx;
+    a.vy -= (j / a.mass) * ny;
+    b.vx += (j / b.mass) * nx;
+    b.vy += (j / b.mass) * ny;
+
+    // transferência de spin: colisão violenta reduz spin do menor
+    const impactForce = Math.abs(j);
+    const spinTransfer = impactForce * SPIN_TRANSFER_RATIO;  // ex: 0.015
+    const weakerSpin = Math.min(a.spin, b.spin);
+    if (a.spin < b.spin) {
+      a.spin -= spinTransfer;
+      b.spin += spinTransfer * 0.3; // feedback menor para o atacante
+    } else {
+      b.spin -= spinTransfer;
+      a.spin += spinTransfer * 0.3;
+    }
+
+    // disparar evento de colisão para habilidades e partículas
+    onCollision(a, b, impactForce, nx, ny);
+  }
+
+COLISÃO COM A BORDA DA ARENA (círculo):
+  const ARENA_RADIUS = 350; // raio da arena em pixels
+  const ARENA_CX = WIDTH / 2;
+  const ARENA_CY = HEIGHT / 2;
+
+  function handleArenaBoundary(top) {
+    const dx = top.x - ARENA_CX;
+    const dy = top.y - ARENA_CY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const limit = ARENA_RADIUS - top.radius;
+
+    if (dist > limit) {
+      const nx = dx / dist;
+      const ny = dy / dist;
+      // reposicionar dentro
+      top.x = ARENA_CX + nx * limit;
+      top.y = ARENA_CY + ny * limit;
+      // refletir velocidade (com perda)
+      const dot = top.vx * nx + top.vy * ny;
+      top.vx -= 2 * dot * nx * top.restitution;
+      top.vy -= 2 * dot * ny * top.restitution;
+      // impacto na borda drena um pouco de spin
+      top.spin -= Math.abs(dot) * BORDER_SPIN_DRAIN;  // ex: 0.008
+    }
+  }
+
+
+--------------------------------------------------------------------------------
+  SISTEMA DE PARTÍCULAS — POOLED
+--------------------------------------------------------------------------------
+
+O pool é alocado uma vez na inicialização. Nunca criar objetos novos durante o jogo.
+
+  const PARTICLE_POOL_SIZE = 512;
+
+  class ParticlePool {
+    constructor() {
+      this.pool = new Array(PARTICLE_POOL_SIZE).fill(null).map(() => ({
+        active: false,
+        x: 0, y: 0,
+        vx: 0, vy: 0,
+        life: 0,        // 0..1, decresce até 0 (morte)
+        decay: 0,       // velocidade de morte
+        radius: 0,
+        color: '#fff',
+        alpha: 1,
+        type: 'spark',  // 'spark' | 'ring' | 'debris' | 'smoke'
+      }));
+      this.active = 0;
+    }
+
+    emit(config) {
+      // encontrar slot inativo
+      for (let i = 0; i < PARTICLE_POOL_SIZE; i++) {
+        const p = this.pool[i];
+        if (!p.active) {
+          Object.assign(p, config, { active: true, life: 1 });
+          return p;
+        }
+      }
+      // pool cheio: sobrescreve o mais antigo (sem crash)
+    }
+
+    update(dt) {
+      this.active = 0;
+      for (const p of this.pool) {
+        if (!p.active) continue;
+        p.life -= p.decay * dt;
+        if (p.life <= 0) { p.active = false; continue; }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 80 * dt; // gravidade leve para debris
+        p.vx *= 0.98;
+        this.active++;
+      }
+    }
+
+    render(ctx) {
+      for (const p of this.pool) {
+        if (!p.active) continue;
+        ctx.globalAlpha = p.life * p.alpha;
+        if (p.type === 'spark') {
+          ctx.fillStyle = p.color;
+          ctx.fillRect(p.x - p.radius, p.y - p.radius, p.radius * 2, p.radius * 2);
+        } else if (p.type === 'ring') {
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = p.radius * p.life;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius * (2 - p.life), 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (p.type === 'debris') {
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+BUDGET DE PARTÍCULAS POR EVENTO:
+  Impacto leve:   4 sparks + 1 ring
+  Impacto médio:  8 sparks + 1 ring
+  Impacto pesado: 12 sparks + 2 rings + 4 debris
+  Morte:          20 debris + 3 rings + smoke trail
+  Habilidade:     definido por personagem, max 16 partículas
+
+
+--------------------------------------------------------------------------------
+  SISTEMA DE CAMERA — SCREEN SHAKE
+--------------------------------------------------------------------------------
+
+  class Camera {
+    constructor() {
+      this.shakeX = 0;
+      this.shakeY = 0;
+      this.shakeMag = 0;
+      this.shakeDecay = 8; // quanto por segundo decai
+    }
+
+    shake(magnitude) {
+      this.shakeMag = Math.min(this.shakeMag + magnitude, 20); // cap
+    }
+
+    update(dt) {
+      if (this.shakeMag < 0.1) { this.shakeMag = 0; return; }
+      this.shakeX = (Math.random() - 0.5) * 2 * this.shakeMag;
+      this.shakeY = (Math.random() - 0.5) * 2 * this.shakeMag;
+      this.shakeMag -= this.shakeDecay * dt;
+    }
+
+    apply(ctx) {
+      ctx.save();
+      ctx.translate(this.shakeX, this.shakeY);
+    }
+
+    restore(ctx) {
+      ctx.restore();
+    }
+  }
+
+  // Calibração de shake por impacto:
+  impactForce < 50   → shake(1)
+  impactForce < 200  → shake(4)
+  impactForce < 500  → shake(8)
+  impactForce >= 500 → shake(14)
+  Morte              → shake(18)
+
+
+--------------------------------------------------------------------------------
+  FORMATAÇÃO DE NÚMEROS GRANDES (numbers.js)
+--------------------------------------------------------------------------------
+
+Internamente todos os valores são floats normais. Apenas na exibição formatamos.
+
+  function fmt(n) {
+    if (n >= 1e12) return (n / 1e12).toFixed(1) + 'T';
+    if (n >= 1e9)  return (n / 1e9).toFixed(1)  + 'B';
+    if (n >= 1e6)  return (n / 1e6).toFixed(1)  + 'M';
+    if (n >= 1e3)  return (n / 1e3).toFixed(1)  + 'K';
+    return Math.round(n).toString();
+  }
+
+  // exemplos:
+  fmt(1234567)  → "1.2M"
+  fmt(430000)   → "430.0K"
+  fmt(999)      → "999"
+
+NÚMEROS DE DANO FLUTUANTES (damage numbers):
+  Ao aplicar dano, spawnar um "floating number" usando o mesmo pool de partículas
+  com type='text'. Sobe lentamente, some em 0.8s. Tamanho proporcional ao dano:
+    dano < 1K    → fonte 14px, branco
+    dano >= 1K   → fonte 18px, amarelo
+    dano >= 100K → fonte 24px, laranja, com leve shake próprio
+    CRIT / hab.  → fonte 28px, cor do personagem, outline branco
+
+  Limitar a 6 floating numbers simultâneos por top para não poluir a tela.
+
+
+--------------------------------------------------------------------------------
+  RENDERIZAÇÃO DOS TOPS
+--------------------------------------------------------------------------------
+
+Cada top é renderizado em camadas (de baixo para cima):
+
+  1. SOMBRA NO CHÃO
+     Elipse oval levemente deslocada, alpha proporcional ao wobble (some quando cai).
+     ctx.save();
+     ctx.scale(1, 0.3);
+     ctx.beginPath();
+     ctx.arc(x, y / 0.3, radius * 1.2, 0, Math.PI * 2);
+     ctx.fillStyle = 'rgba(0,0,0,0.3)';
+     ctx.fill();
+     ctx.restore();
+
+  2. CORPO PRINCIPAL
+     ctx.save();
+     ctx.translate(x, y);
+     ctx.rotate(tiltAngle);        // wobble tilt no eixo visual
+     ctx.rotate(angle);            // rotação de spin
+     // desenhar forma do personagem (detalhes abaixo por char)
+     ctx.restore();
+
+  3. INDICADORES DE ESTADO (por cima, sem rotação)
+     - Anel de HP ao redor do peão (arco fino, cor do personagem)
+     - Ícone de habilidade ativa (se ativada)
+     - Stacks visuais (ex: coroa crescendo)
+
+  4. EFEITOS DE HABILIDADE
+     - Renderizados por cada personagem após o corpo
+
+ANEL DE HP:
+  ctx.beginPath();
+  ctx.arc(x, y, radius + 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (hp / hpMax));
+  ctx.strokeStyle = hpColor(hp / hpMax);  // verde → amarelo → vermelho
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  function hpColor(t) {
+    // t: 1=cheio, 0=morto
+    if (t > 0.5) return `hsl(${120 * (t - 0.5) * 2}, 80%, 55%)`;
+    return `hsl(${120 * t * 2}, 80%, 55%)`;
+  }
+
+
+--------------------------------------------------------------------------------
+  PERSONAGENS — DEFINIÇÕES COMPLETAS
+--------------------------------------------------------------------------------
+
+Todos os personagens herdam da classe base Top.
+Cada um implementa:
+  - onCollide(other, impactForce, nx, ny)   → chamado em toda colisão
+  - onTick(dt)                              → chamado todo update tick
+  - onDeath()                               → chamado ao morrer
+  - render(ctx)                             → override para visual único
+
+
+──────────────────────────────────────────────────────────────────────────────
+  1. ESPELHO (Mirror)
+──────────────────────────────────────────────────────────────────────────────
+
+Visual: corpo hexagonal, borda prateada brilhante. Quando absorve impacto, pulsa
+        com um flash branco.
+
+Stats base:
+  spinMax: 800
+  mass: 1.4
+  radius: 26
+  friction: 0.0008     ← decai spin muito devagar
+  restitution: 0.95    ← colisões quase sem perda de velocidade
+  color: '#A8C8E8'
+
+Habilidade — REFLEXO:
+  Ao receber dano de colisão, devolve REFLECT_RATIO (0.55) do impacto de volta.
+  O atacante perde (spinTransfer * REFLECT_RATIO) de spin ADICIONAL.
+  Escala: a cada 3 colisões sem morrer, REFLECT_RATIO aumenta 0.05 (cap: 0.85).
+
+  onCollide(other, impactForce, nx, ny) {
+    const reflected = impactForce * this.reflectRatio;
+    other.spin -= reflected * SPIN_TRANSFER_RATIO;
+    this.spin += reflected * SPIN_TRANSFER_RATIO * 0.2; // absorção parcial
+
+    this.reflectCount++;
+    if (this.reflectCount % 3 === 0) {
+      this.reflectRatio = Math.min(this.reflectRatio + 0.05, 0.85);
+    }
+    spawnReflectFlash(this.x, this.y, this.radius);
+  }
+
+Visual da habilidade:
+  Ring branco expansivo no momento do reflexo (type='ring', raio cresce 0..60,
+  life decai em 0.3s). Borda do peão pisca para branco por 100ms.
+
+Narrativa: Vira vilão por parecer "injusto". Quanto mais batem nele, mais forte fica.
+
+──────────────────────────────────────────────────────────────────────────────
+  2. BERSERKER
+──────────────────────────────────────────────────────────────────────────────
+
+Visual: corpo triangular dentado, cor laranja-vermelho. Quanto menos HP, mais
+        rachaduras aparecem e a cor fica mais brilhante (intensidade satura).
+
+Stats base:
+  spinMax: 500
+  mass: 1.0
+  radius: 22
+  friction: 0.0015
+  restitution: 0.8
+  color: '#E8593C'
+
+Habilidade — FÚRIA:
+  Para cada 10% de HP perdido, ganha +15% de velocidade linear (vx/vy).
+  Também aumenta o spinTransfer causado em colisões em +8% por stack de fúria.
+  Estado de "fúria máxima" (< 20% HP): cor pulsa vermelho intenso, tamanho
+  visual aumenta 10% (apenas render, não afeta o collider).
+
+  onTick(dt) {
+    const hpRatio = this.spin / this.spinMax;
+    const furyStacks = Math.floor((1 - hpRatio) / 0.1);  // 0..10
+    const speedMult = 1 + furyStacks * 0.15;
+
+    // aplicar mult à velocidade atual sem ultrapassar o max
+    const currentSpeed = Math.sqrt(this.vx**2 + this.vy**2);
+    const targetSpeed = this.baseSpeed * speedMult;
+    if (currentSpeed > 0.1 && currentSpeed < targetSpeed) {
+      const scale = targetSpeed / currentSpeed;
+      this.vx *= scale;
+      this.vy *= scale;
+    }
+    this.furyStacks = furyStacks;
+  }
+
+Visual da habilidade:
+  Rachaduras: 2 a 5 linhas brancas saindo do centro, comprimento proporcional ao
+  dano recebido. Regeneram visualmente a cada ataque.
+  Partículas de brasa (sparks laranjas pequenos) emitidas continuamente quando
+  furyStacks > 5 (4 partículas/s, decay rápido).
+
+Narrativa: Underdog perfeito. Cheio de rachaduras mas ainda acertando forte.
+
+──────────────────────────────────────────────────────────────────────────────
+  3. COROA (Crown)
+──────────────────────────────────────────────────────────────────────────────
+
+Visual: corpo circular com uma coroa dourada renderizada por cima. A coroa cresce
+        visualmente a cada stack.
+
+Stats base:
+  spinMax: 600
+  mass: 1.2
+  radius: 24
+  friction: 0.0012
+  restitution: 0.75
+  color: '#E8A020'
+
+Habilidade — LEGADO:
+  A cada eliminação em qualquer partida anterior (persistida em sessionStorage),
+  começa com bônus de stats. Dentro de uma partida, ganha 1 stack por segundo de
+  sobrevivência (no modo torneio futuro) e +1 stack ao eliminar.
+  Cada stack:
+    +2% de mass
+    +1% de spinMax
+    +0.5% de radius (cap: +20% do base)
+  Stacks são resetados ao morrer.
+
+  Para o 1v1 inicial: começa sem stacks. Stacks acumulam durante a luta (+1 a
+  cada 8 segundos sobrevivendo). Visualização imediata da evolução.
+
+Visual da habilidade:
+  Coroa desenhada acima do centro do peão, altura proporcional ao nº de stacks.
+  Cada ponto da coroa brilha dourado. Ao ganhar stack: flash dourado + som (futuro).
+
+Narrativa: Vilão natural. Fica visivelmente maior e mais imponente. O público odeia.
+
+──────────────────────────────────────────────────────────────────────────────
+  4. FENDA (Fissure)
+──────────────────────────────────────────────────────────────────────────────
+
+Visual: corpo oval com linha de fratura crescente conforme perde HP.
+
+Stats base:
+  spinMax: 700
+  mass: 1.1
+  radius: 23
+  friction: 0.001
+  restitution: 0.82
+  color: '#D4537E'
+
+Habilidade — DIVISÃO:
+  Ao chegar em 30% de HP, divide-se em dois filhos.
+  Cada filho herda:
+    - 50% dos stats da mãe (spinMax, mass, radius * 0.7)
+    - Velocidade da mãe + vetor perpendicular divergente
+    - Memória de quem causou o dano: +20% de dano contra esse inimigo
+
+  A Fenda principal some. Os dois filhos são novos tops independentes.
+  Se um filho chega a 30% HP novamente, pode dividir mais uma vez
+  (segunda geração com stats 50% dos filhos, cap de 2 gerações).
+
+  onTick(dt) {
+    if (!this.hasSplit && this.spin / this.spinMax < 0.30) {
+      this.split();
+    }
+  }
+
+  split() {
+    const angle = Math.atan2(this.vy, this.vx);
+    const perpX = -Math.sin(angle);
+    const perpY = Math.cos(angle);
+    const speed = Math.sqrt(this.vx**2 + this.vy**2);
+    spawnTop('fenda_child', {
+      x: this.x + perpX * this.radius,
+      y: this.y + perpY * this.radius,
+      vx: this.vx + perpX * speed * 0.6,
+      vy: this.vy + perpY * speed * 0.6,
+      spinMax: this.spinMax * 0.5,
+      generation: this.generation + 1,
+      nemesis: this.lastDamageSource,
+    });
+    spawnTop('fenda_child', {
+      // ... vetor oposto
+    });
+    this.alive = false;
+  }
+
+Visual da habilidade:
+  Linha de fratura cresce do centro para fora conforme HP cai (< 70% HP).
+  No momento da divisão: flash branco + 20 debris explosivos se espalhando.
+
+Narrativa: O momento da divisão É o conteúdo. Dois filhos pequenos vencendo juntos.
+
+──────────────────────────────────────────────────────────────────────────────
+  5. SOMBRA (Shadow)
+──────────────────────────────────────────────────────────────────────────────
+
+Visual: corpo circular, ligeiramente translúcido. Deixa rastro de cópias fantasma.
+
+Stats base:
+  spinMax: 450
+  mass: 0.85
+  radius: 20
+  friction: 0.0018
+  restitution: 0.9
+  color: '#7B6FCC'
+
+Habilidade — ECO:
+  A cada 1.5s, deposita uma cópia fantasma na posição atual.
+  A cópia:
+    - É um collider real (intercepta ataques)
+    - Tem HP = 15% do HP atual da Sombra
+    - Some após 3s ou ao receber qualquer hit
+    - Não se move
+  Máximo de 2 fantasmas ativos simultâneos.
+
+  onTick(dt) {
+    this.ghostTimer += dt;
+    if (this.ghostTimer > 1.5) {
+      this.ghostTimer = 0;
+      if (this.ghosts.length < 2) {
+        spawnGhost(this.x, this.y, this.spin * 0.15, this.color);
+      }
+    }
+  }
+
+Visual da habilidade:
+  Fantasmas: alpha 0.35, mesma forma da Sombra, sem spin visual.
+  Ao serem destruídos: dissipam em partículas roxas (8 sparks, decay rápido).
+  Rastro de movimento: trail de 5 posições anteriores, alpha decrescente.
+
+Narrativa: Confunde o rival (e o espectador). "Qual é o real?" é engajamento gratuito.
+
+──────────────────────────────────────────────────────────────────────────────
+  6. PARASITA
+──────────────────────────────────────────────────────────────────────────────
+
+Visual: corpo irregular, orgânico. Filamento pulsante conecta ao alvo infectado.
+
+Stats base:
+  spinMax: 400
+  mass: 0.9
+  radius: 19
+  friction: 0.002
+  restitution: 0.7
+  color: '#2A9E70'
+
+Habilidade — INFECÇÃO:
+  Ao tocar um inimigo, aplica uma sanguessuga que drena 0.8% do spinMax do alvo
+  por segundo. A drenagem é transferida para o Parasita como cura (50% da drenagem).
+  Múltiplas sanguessugas acumulam (max 3 no mesmo alvo).
+  Cada sanguessuga dura 5s ou até ser "sacudida" (inimigo colidindo com a borda).
+
+  onCollide(other, impactForce, nx, ny) {
+    if (other.leeches.length < 3) {
+      other.leeches.push({
+        source: this,
+        drainRate: other.spinMax * 0.008, // por segundo
+        duration: 5,
+        elapsed: 0,
+      });
+    }
+  }
+
+  // Em top.js, aplicar leeches no update:
+  onTick(dt) {
+    this.leeches = this.leeches.filter(l => {
+      l.elapsed += dt;
+      const drain = l.drainRate * dt;
+      this.spin -= drain;
+      if (l.source.alive) l.source.spin = Math.min(l.source.spin + drain * 0.5, l.source.spinMax);
+      return l.elapsed < l.duration;
+    });
+  }
+
+Visual da habilidade:
+  Linha tracejada pulsante do Parasita ao alvo (ou da posição da picada ao alvo
+  se o Parasita se afastou). Cor verde, espessura fina (1px), dashoffset animado.
+  Pequeno círculo pulsante no ponto de infecção do alvo.
+
+Narrativa: Parece fraco mas corrói o líder da arena. Virada silenciosa.
+
+──────────────────────────────────────────────────────────────────────────────
+  7. TREMOR
+──────────────────────────────────────────────────────────────────────────────
+
+Visual: corpo circular com padrão concêntrico. Ao colidir, anéis se expandem.
+
+Stats base:
+  spinMax: 520
+  mass: 1.1
+  radius: 22
+  friction: 0.0013
+  restitution: 0.65    ← absorve mais o impacto para si
+  color: '#8070CC'
+
+Habilidade — ONDA DE CHOQUE:
+  Ao colidir com QUALQUER coisa (outro top, borda da arena), emite uma onda radial.
+  A onda cresce de raio 0 até WAVE_MAX_RADIUS (150px) em 0.4s.
+  Qualquer top que a onda toque recebe:
+    spinDamage = WAVE_POWER * (1 - dist / WAVE_MAX_RADIUS)  // cai com distância
+    impulso radial para fora da onda
+
+  cooldown entre ondas: 0.6s (evitar spam de colisões rápidas).
+
+  onCollide(other, impactForce) {
+    if (this.waveCooldown > 0) return;
+    this.waveCooldown = 0.6;
+    spawnShockwave(this.x, this.y, impactForce * WAVE_POWER_SCALE);
+  }
+
+  // Shockwave é um objeto separado (não partícula), atualizado em physics.js:
+  {
+    x, y,
+    radius: 0,
+    maxRadius: 150,
+    power: <calculado>,
+    age: 0,
+    duration: 0.4,
+    hits: new Set(), // não acertar o mesmo top duas vezes
+  }
+
+Visual da habilidade:
+  Anel expansivo com strokeStyle do personagem, lineWidth decresce com life.
+  Ao acertar um top: micro flash no ponto de contato.
+
+Narrativa: Cria caos em combates com múltiplos agentes. Cada colisão escova outros.
+
+──────────────────────────────────────────────────────────────────────────────
+  8. POÇO (Gravity Well)
+──────────────────────────────────────────────────────────────────────────────
+
+Visual: corpo circular, espirais concêntricas de baixo alpha ao redor.
+
+Stats base:
+  spinMax: 650
+  mass: 1.5
+  radius: 25
+  friction: 0.0009
+  restitution: 0.72
+  color: '#1A8860'
+
+Habilidade — GRAVIDADE:
+  Emite campo gravitacional constante ao redor.
+  Qualquer top dentro de GRAVITY_RADIUS (180px) recebe aceleração em direção ao Poço:
+
+  onTick(dt) {
+    for (const other of allTops) {
+      if (other === this || !other.alive) continue;
+      const dx = this.x - other.x;
+      const dy = this.y - other.y;
+      const distSq = dx * dx + dy * dy;
+      const dist = Math.sqrt(distSq);
+      if (dist > GRAVITY_RADIUS || dist < this.radius) continue;
+
+      const force = GRAVITY_STRENGTH / distSq;  // GRAVITY_STRENGTH: 8000
+      other.vx += (dx / dist) * force * dt;
+      other.vy += (dy / dist) * force * dt;
+    }
+  }
+
+  O Poço em si é mais lento (baseSpeed reduzido em 30%) como tradeoff.
+
+Visual da habilidade:
+  3 anéis pontilhados concêntricos girando lentamente em sentidos alternados.
+  Alpha muito baixo (0.12), cor do personagem.
+  Tops atraídos têm uma seta pontilhada apontando para o Poço enquanto na zona.
+
+Narrativa: A "armadilha silenciosa". O público vê antes da vítima perceber.
+
+
+--------------------------------------------------------------------------------
+  HUD (heads-up display)
+--------------------------------------------------------------------------------
+
+Manter absolutamente minimalista. Tudo que o HUD precisa:
+
+  [TOP A — lado esquerdo]
+    - Avatar/ícone (32x32) do personagem
+    - Nome (fonte 14px, bold)
+    - Barra de HP larga (200px), cor dinâmica
+    - HP em número: "48.2K / 100K" (fonte 12px, monospace)
+
+  [TOP B — lado direito, espelhado]
+
+  [Centro superior]
+    - Timer da rodada (opcional, fonte 16px)
+
+  [Centro inferior — log de eventos, opcional]
+    - Linha de texto para eventos importantes:
+      "BERSERKER ativou FÚRIA MÁXIMA!"
+      "ESPELHO acumulou 8 reflexos"
+    - Some após 2s, fade out
+
+Não renderizar HUD no canvas principal. Usar overlay HTML por cima do canvas.
+Isso evita redraw do HUD no loop de render e simplifica o DOM.
+
+  <div id="hud" style="position:absolute; top:0; left:0; pointer-events:none;">
+    ...barras de HP em HTML/CSS...
+  </div>
+
+Atualizar o HUD apenas quando o valor muda (requestAnimationFrame, mas com
+throttle de 30fps para os textos numéricos).
+
+
+--------------------------------------------------------------------------------
+  ANIMAÇÃO DE MORTE
+--------------------------------------------------------------------------------
+
+Ao spin atingir o threshold de morte:
+
+  1. WOBBLE MÁXIMO (0.3s)
+     wobble vai de current até 1.0 rapidamente. Peão oscila intensamente.
+
+  2. ESPIRAL DE QUEDA (0.8s)
+     Peão gira mais devagar (spin → 0), inclina cada vez mais (tilt → PI/2).
+     Raio visual encolhe (radius * scale, scale: 1 → 0).
+     Opacidade: 1 → 0 nos últimos 0.3s.
+
+  3. EXPLOSÃO FINAL
+     No momento que scale chega em 0:
+     - Spawn 20 debris na cor do personagem
+     - Spawn 3 rings expansivos
+     - Camera shake proporcional ao spinMax do morto
+     - Texto flutuante: "ELIMINADO" ou nome do vencedor
+
+  4. TELA DE RESULTADO (1.5s depois)
+     Fade in de overlay semitransparente.
+     Vencedor centralizado com animação de entrada.
+
+
+--------------------------------------------------------------------------------
+  ESCALABILIDADE — REGRAS PARA SUPORTAR MÚLTIPLOS AGENTES
+--------------------------------------------------------------------------------
+
+SPATIAL HASHING (implementar desde o início):
+  Para N tops, a detecção de colisão O(N²) fica inviável acima de ~20 agentes.
+  Usar uma grade de hash espacial simples:
+
+  const CELL_SIZE = 80; // maior que o maior radius * 2
+
+  class SpatialHash {
+    constructor() { this.cells = new Map(); }
+
+    key(x, y) {
+      return `${Math.floor(x / CELL_SIZE)},${Math.floor(y / CELL_SIZE)}`;
+    }
+
+    insert(top) {
+      const k = this.key(top.x, top.y);
+      if (!this.cells.has(k)) this.cells.set(k, []);
+      this.cells.get(k).push(top);
+    }
+
+    query(top) {
+      // retorna tops nas 9 células ao redor
+      const cx = Math.floor(top.x / CELL_SIZE);
+      const cy = Math.floor(top.y / CELL_SIZE);
+      const result = [];
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const k = `${cx + dx},${cy + dy}`;
+          if (this.cells.has(k)) result.push(...this.cells.get(k));
+        }
+      }
+      return result;
+    }
+
+    clear() { this.cells.clear(); }
+  }
+
+  // No update():
+  spatialHash.clear();
+  tops.forEach(t => spatialHash.insert(t));
+  tops.forEach(a => {
+    spatialHash.query(a).forEach(b => {
+      if (b.id > a.id) resolveCollision(a, b); // evitar processar par duas vezes
+    });
+  });
+
+NÚMEROS ABSURDOS (HP > 1M, dano > 100K):
+  - Internamente: float64 (JS nativo) aguenta até ~9 * 10^15 com precisão.
+    Não há necessidade de BigInt para esses valores.
+  - spinMax pode ser qualquer float. Apenas a exibição muda (função fmt() acima).
+  - Velocidades e forças precisam de calibração cuidadosa: manter as constantes
+    SPIN_TRANSFER_RATIO, GRAVITY_STRENGTH etc. em escala relativa ao spinMax,
+    não absoluta. Ex: dano = impactForce * spinMax * 0.003 (relativo).
+
+BUDGET DE RENDER POR AGENTE:
+  Para N > 10 agentes, desativar:
+    - Sombra no chão (desafogar fillRect por agente)
+    - Partículas de habilidade passiva (só emitir em eventos de colisão)
+    - Anéis de HP (substituir por barra centralizada no HUD global)
+
+  Threshold adaptativo:
+    N <= 8:   render completo
+    N <= 20:  sem sombra no chão
+    N <= 50:  sem partículas passivas, sem HP ring individual
+    N > 50:   apenas corpo + partículas de colisão
+
+
+--------------------------------------------------------------------------------
+  PONTOS DE EXTENSÃO FUTUROS
+--------------------------------------------------------------------------------
+
+Para não precisar refatorar ao expandir:
+
+1. TOP BASE:
+   Expor hooks: onCollide, onTick, onDeath, render.
+   Cada personagem sobrescreve apenas o que precisa.
+
+2. EVENTS:
+   Implementar um EventBus simples desde o início:
+     eventBus.emit('collision', { a, b, force })
+     eventBus.emit('death', { top, killer })
+     eventBus.emit('spinChange', { top, delta })
+   Habilidades escutam eventos, não acoplam direto à física.
+
+3. STATS:
+   Manter um objeto stats por top:
+     { totalDamageDealt, totalDamageReceived, collisions, timeSurvived }
+   Exibir no fim da rodada. Alimenta narrativa ("Espelho devolveu 43K de dano").
+
+4. REPLAY / GRAVAÇÃO:
+   Logar o estado completo a cada N ticks em um array (determinístico).
+   Replay = reproduzir o array com o mesmo fixed timestep.
+   Para shorts: exportar como sequência de frames via OffscreenCanvas.
+
+5. TORNEIO:
+   Array de matchups, rodada automática, bracket visual.
+   "Vilão" detectado por: mesmo personagem vencendo 3+ rodadas seguidas.
+   "Underdog" detectado por: HP < 20% e vencendo no final.
+   Narração textual gerada automaticamente por essas flags.
+
+
+--------------------------------------------------------------------------------
+  FLUXO DE INÍCIO — 1v1
+--------------------------------------------------------------------------------
+
+  1. Selecionar dois personagens (random ou por config)
+  2. Posicionar nos lados opostos da arena com velocidade inicial divergente
+  3. Countdown visual (3, 2, 1... FIGHT!)
+  4. Loop de simulação começa
+  5. Ao detectar morte: parar física, iniciar sequência de morte
+  6. Tela de resultado 1.5s depois
+  7. Opção: rematch ou novo par
+
+
+--------------------------------------------------------------------------------
+  REGRAS DE PERFORMANCE — NUNCA VIOLAR
+--------------------------------------------------------------------------------
+
+  ✗ Nunca criar objetos novos dentro do loop de update/render (GC pressure)
+  ✗ Nunca usar innerHTML ou DOM manipulation dentro do game loop
+  ✗ Nunca fazer layout queries (offsetWidth, getBoundingClientRect) por frame
+  ✗ Nunca usar filter/map/reduce em arrays quentes sem benchmarking
+  ✓ Sempre pré-alocar arrays e reusar (pool de partículas, spatial hash)
+  ✓ Usar for loop clássico para arrays grandes (mais rápido que forEach em V8)
+  ✓ Separar update() e render() em funções puras sem side effects no DOM
+  ✓ Medir com performance.now() ao adicionar funcionalidade nova
+  ✓ Target: update() < 2ms, render() < 6ms para 2 agentes em 60fps
+
+
+================================================================================
+  FIM DO SPEC
+================================================================================

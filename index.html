@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Spinning Tops Royale</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+        height: 100%;
+        overflow: hidden;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        color: #fff;
+      }
+      #wrap {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #000;
+      }
+      canvas {
+        position: absolute;
+        inset: 0;
+        margin: auto;
+        image-rendering: auto;
+      }
+      #hud {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 100%;
+        pointer-events: none;
+      }
+      .panel {
+        position: absolute;
+        top: 16px;
+        width: 320px;
+      }
+      #panelA { left: 16px; }
+      #panelB { right: 16px; text-align: right; }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .name {
+        font-weight: 800;
+        font-size: 14px;
+        letter-spacing: 0.2px;
+      }
+      .avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.12);
+        border: 1px solid rgba(255,255,255,0.18);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+      }
+      .hpBar {
+        position: relative;
+        height: 12px;
+        width: 200px;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.08);
+        overflow: hidden;
+        margin-top: 6px;
+      }
+      .hpFill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 50%;
+        background: #0f0;
+      }
+      .hpText {
+        font-size: 12px;
+        margin-top: 2px;
+        opacity: 0.95;
+      }
+      #centerTop {
+        position: absolute;
+        top: 18px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-weight: 700;
+        font-size: 16px;
+        opacity: 0.95;
+        text-shadow: 0 2px 10px rgba(0,0,0,0.6);
+      }
+      #log {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 18px;
+        width: min(720px, 90vw);
+        text-align: center;
+        font-size: 16px;
+        opacity: 0.95;
+      }
+      #countdown {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 64px;
+        font-weight: 900;
+        text-shadow: 0 6px 28px rgba(0,0,0,0.65);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease;
+      }
+      #result {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 220ms ease;
+      }
+      #resultInner {
+        width: min(640px, 92vw);
+        background: rgba(0,0,0,0.66);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 16px;
+        padding: 18px 18px 20px;
+        text-align: center;
+      }
+      #resultTitle {
+        font-size: 26px;
+        font-weight: 900;
+        margin-bottom: 10px;
+      }
+      #rematchBtn {
+        margin-top: 12px;
+        background: rgba(255,255,255,0.12);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #fff;
+        border-radius: 12px;
+        padding: 10px 14px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      #rematchBtn:hover {
+        background: rgba(255,255,255,0.18);
+      }
+
+      /* Settings */
+      #settings {
+        position: absolute;
+        left: 16px;
+        bottom: 16px;
+        width: min(420px, 92vw);
+        background: rgba(0,0,0,0.55);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 14px;
+        padding: 12px 12px 10px;
+        pointer-events: auto;
+        opacity: 0.95;
+      }
+      #settingsHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      #settingsTitle {
+        font-weight: 900;
+        letter-spacing: 0.2px;
+      }
+      #settings small { opacity: 0.75; }
+      #settingsBody {
+        display: none;
+        margin-top: 8px;
+        border-top: 1px solid rgba(255,255,255,0.12);
+        padding-top: 10px;
+      }
+      #settings.open #settingsBody { display: block; }
+      .ctrl {
+        display: grid;
+        grid-template-columns: 120px 1fr 64px;
+        gap: 10px;
+        align-items: center;
+        margin: 8px 0;
+      }
+      .ctrl label { font-size: 12px; opacity: 0.9; }
+      .ctrl input[type="range"] { width: 100%; }
+      .ctrl input[type="number"] {
+        width: 64px;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.16);
+        color: #fff;
+        border-radius: 8px;
+        padding: 6px 8px;
+      }
+      .btnRow {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+      .btn {
+        background: rgba(255,255,255,0.12);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #fff;
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .btn:hover { background: rgba(255,255,255,0.18); }
+      .chkRow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 6px 0 10px;
+        font-size: 12px;
+        opacity: 0.95;
+      }
+      .hint {
+        font-size: 11px;
+        opacity: 0.75;
+        line-height: 1.3;
+        margin-top: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="wrap">
+      <canvas id="game"></canvas>
+      <div id="hud">
+        <div id="panelA" class="panel">
+          <div class="row">
+            <div id="avatarA" class="avatar">A</div>
+            <div>
+              <div id="nameA" class="name">Top A</div>
+              <div id="hpBarA" class="hpBar">
+                <div id="hpFillA" class="hpFill"></div>
+              </div>
+              <div id="hpTextA" class="hpText">0 / 0</div>
+            </div>
+          </div>
+        </div>
+        <div id="panelB" class="panel">
+          <div class="row" style="justify-content:flex-end;">
+            <div>
+              <div id="nameB" class="name">Top B</div>
+              <div id="hpBarB" class="hpBar" style="margin-left:auto;">
+                <div id="hpFillB" class="hpFill"></div>
+              </div>
+              <div id="hpTextB" class="hpText" style="text-align:right;">0 / 0</div>
+            </div>
+            <div id="avatarB" class="avatar">B</div>
+          </div>
+        </div>
+        <div id="centerTop">—</div>
+        <div id="log"></div>
+      </div>
+      <div id="countdown">3</div>
+      <div id="result">
+        <div id="resultInner">
+          <div id="resultTitle">Vencedor</div>
+          <div id="resultSubtitle" style="opacity:0.9;">Pressione R para rematch</div>
+          <button id="rematchBtn" type="button">Rematch</button>
+        </div>
+      </div>
+
+      <div id="settings">
+        <div id="settingsHeader">
+          <div>
+            <div id="settingsTitle">Settings</div>
+            <small>tecla: <b>G</b> abre/fecha</small>
+          </div>
+          <button id="settingsToggle" class="btn" type="button">Abrir</button>
+        </div>
+        <div id="settingsBody">
+          <div class="chkRow">
+            <label style="display:flex; align-items:center; gap:8px;">
+              <input id="cfg_steer_enabled" type="checkbox" />
+              Steering ligado
+            </label>
+            <div style="opacity:0.7;">(colisões / anti-borda / anti-stall)</div>
+          </div>
+
+          <div class="ctrl">
+            <label for="cfg_steer_mult">Global</label>
+            <input id="cfg_steer_mult" type="range" min="0" max="3" step="0.01" />
+            <input id="cfg_steer_mult_n" type="number" min="0" max="3" step="0.01" />
+          </div>
+          <div class="ctrl">
+            <label for="cfg_steer_seek">Seek</label>
+            <input id="cfg_steer_seek" type="range" min="0" max="3" step="0.01" />
+            <input id="cfg_steer_seek_n" type="number" min="0" max="3" step="0.01" />
+          </div>
+          <div class="ctrl">
+            <label for="cfg_steer_edge">Edge</label>
+            <input id="cfg_steer_edge" type="range" min="0" max="3" step="0.01" />
+            <input id="cfg_steer_edge_n" type="number" min="0" max="3" step="0.01" />
+          </div>
+          <div class="ctrl">
+            <label for="cfg_steer_center">Center</label>
+            <input id="cfg_steer_center" type="range" min="0" max="3" step="0.01" />
+            <input id="cfg_steer_center_n" type="number" min="0" max="3" step="0.01" />
+          </div>
+          <div class="ctrl">
+            <label for="cfg_steer_stall">Stall</label>
+            <input id="cfg_steer_stall" type="range" min="0" max="3" step="0.01" />
+            <input id="cfg_steer_stall_n" type="number" min="0" max="3" step="0.01" />
+          </div>
+
+          <div class="btnRow">
+            <button id="cfg_save" class="btn" type="button">Salvar config.json</button>
+            <label class="btn" style="display:inline-flex; align-items:center; gap:8px;">
+              Importar JSON
+              <input id="cfg_import" type="file" accept="application/json" style="display:none;" />
+            </label>
+            <button id="cfg_reset" class="btn" type="button">Reset defaults</button>
+          </div>
+          <div class="hint">
+            “Salvar” baixa um <code>config.json</code> com o estado atual da tela (pra você substituir o arquivo do projeto). No primeiro load, o jogo lê <code>/config.json</code>.
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

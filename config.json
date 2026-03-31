@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "steering": {
+    "enabled": true,
+    "mult": 1,
+    "seekMult": 1,
+    "edgeMult": 1,
+    "centerMult": 1,
+    "stallMult": 1,
+
+    "seekAccelMin": 28,
+    "seekAccelMax": 90,
+    "seekNearDist": 140,
+    "seekFarDist": 560,
+
+    "edgeStartRatio": 0.78,
+    "edgeInwardAccel": 120,
+    "edgeOrbitRadialThreshold": 10,
+    "edgeOrbitBreakAccel": 25,
+
+    "centerRadius": 42,
+    "centerDriftAccel": 55,
+
+    "stallSpeedThreshold": 18,
+    "stallTime": 0.65,
+    "stallTapAccel": 170
+  }
+}
+
