@@ -186,7 +186,7 @@ export class Parasita extends Top {
     drawVertexSparkles(ctx, this.radius, 7, hr, 'rgba(220,255,230,0.9)', t, { direction: -1, radiusScale: 0.72 });
   }
 
-  renderWorldExtras(ctx, opts) {
+  renderWorldUnderExtras(ctx, opts) {
     const alpha = opts.alpha ?? 1;
     const px = opts.x ?? this.x;
     const py = opts.y ?? this.y;
@@ -201,8 +201,6 @@ export class Parasita extends Top {
       const minSep = this.tentacleMinSepAngle;
       const maxFanTarget = this.tentacleMaxFan;
       const maxFanParasite = this.tentacleMaxFanParasite;
-      const stride =
-        this.tentaclePerpStride + Math.min(n, 28) * this.tentaclePerpStridePerCount;
 
       for (let vi = 0; vi < mine.length; vi++) {
         const leech = mine[vi];
@@ -216,13 +214,19 @@ export class Parasita extends Top {
         const baseToP = Math.atan2(py - ty, px - tx);
         const offP = tentacleAngularOffsetRad(vi, n, minSep, maxFanParasite);
         const offT = tentacleAngularOffsetRad(vi, n, minSep, maxFanTarget);
-        const startA = baseToT + offP;
+        // Saída no parasita distribuída pela circunferência inteira (não só "de frente").
+        // Mantemos um phase determinístico por par parasita-alvo para estabilidade visual.
+        const fullRingPhase = ((this.id * 37 + target.id * 53) % 360) * (Math.PI / 180);
+        const startA = fullRingPhase + (Math.PI * 2 * vi) / Math.max(1, n) + offP * 0.12;
         const endA = baseToP + offT;
-        const sx = px + Math.cos(startA) * this.radius;
-        const sy = py + Math.sin(startA) * this.radius;
+        const sourceRadius = this.radius * 0.5;
+        const sx = px + Math.cos(startA) * sourceRadius;
+        const sy = py + Math.sin(startA) * sourceRadius;
         const ex = tx + Math.cos(endA) * target.radius;
         const ey = ty + Math.sin(endA) * target.radius;
-        const spread = (vi - (n - 1) / 2) * stride;
+        // Sem "spread" perpendicular aqui: ele alinhava as bases em uma reta.
+        // Mantendo 0, as bases ficam realmente distribuídas na circunferência.
+        const spread = 0;
         const sagSign = vi % 2 === 0 ? 1 : -1;
         drawFilament(ctx, sx, sy, ex, ey, leech, time, spread, sagSign);
       }

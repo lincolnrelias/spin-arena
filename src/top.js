@@ -91,6 +91,12 @@ export class Top {
   }
 
   /**
+   * Desenho em espaço de mundo, por baixo do corpo do próprio pião.
+   * Use para efeitos que devem ficar atrás do agente (ex.: cabos/tentáculos).
+   */
+  renderWorldUnderExtras(ctx, opts) {}
+
+  /**
    * Desenho em espaço de mundo (após restaurar translate/rotate do pião).
    * Use para linhas entre agentes, feixes, etc.
    */
@@ -285,6 +291,19 @@ export class Top {
     }
 
     const scale = (this.dead ? this.deathRadiusScale : 1) * (this.visualScale || 1);
+
+    // Extras em mundo por baixo do corpo do agente
+    ctx.save();
+    ctx.globalAlpha = renderOpacity;
+    this.renderWorldUnderExtras(ctx, {
+      x,
+      y,
+      angle,
+      hp,
+      alpha: opts.alpha ?? 1,
+      renderOpacity
+    });
+    ctx.restore();
 
     ctx.save();
     ctx.globalAlpha = renderOpacity;
