@@ -114,8 +114,14 @@ export class Parasita extends Top {
     this.pulseIntervalSec = this.ability.pulseInterval ?? 0.5;
     /** Separação angular mínima (rad) entre tentáculos adjacentes no leque */
     this.tentacleMinSepAngle = this.ability.tentacleMinSepAngle ?? 0.4;
-    /** Largura máxima do leque (rad); com muitos tentáculos o passo comprime abaixo do mínimo */
+    /** Largura máxima do leque (rad) no alvo — mantém ancoragens na borda do inimigo */
     this.tentacleMaxFan = this.ability.tentacleMaxFan ?? Math.PI * 0.92;
+    /**
+     * Leque no parasita: mais largo que tentacleMaxFan para os pontos de saída cobrirem
+     * a circunferência (não ficarem numa “reta” voltada ao alvo).
+     */
+    this.tentacleMaxFanParasite =
+      this.ability.tentacleMaxFanParasite ?? Math.PI * 1.85;
     /** Deslocamento perpendicular (px) base entre fios vizinhos */
     this.tentaclePerpStride = this.ability.tentaclePerpStride ?? 11;
     /** Aumento do stride por quantidade de tentáculos (evita encosto no plano quando n é grande) */
@@ -193,7 +199,8 @@ export class Parasita extends Top {
         .sort((a, b) => (a.slotIndex ?? 0) - (b.slotIndex ?? 0));
       const n = mine.length;
       const minSep = this.tentacleMinSepAngle;
-      const maxFan = this.tentacleMaxFan;
+      const maxFanTarget = this.tentacleMaxFan;
+      const maxFanParasite = this.tentacleMaxFanParasite;
       const stride =
         this.tentaclePerpStride + Math.min(n, 28) * this.tentaclePerpStridePerCount;
 
@@ -205,12 +212,12 @@ export class Parasita extends Top {
           target.prevY !== undefined ? lerp(target.prevY, target.y, alpha) : target.y;
         const dx = tx - px;
         const dy = ty - py;
-        const dist = Math.hypot(dx, dy) || 1;
         const baseToT = Math.atan2(dy, dx);
         const baseToP = Math.atan2(py - ty, px - tx);
-        const off = tentacleAngularOffsetRad(vi, n, minSep, maxFan);
-        const startA = baseToT + off;
-        const endA = baseToP + off;
+        const offP = tentacleAngularOffsetRad(vi, n, minSep, maxFanParasite);
+        const offT = tentacleAngularOffsetRad(vi, n, minSep, maxFanTarget);
+        const startA = baseToT + offP;
+        const endA = baseToP + offT;
         const sx = px + Math.cos(startA) * this.radius;
         const sy = py + Math.sin(startA) * this.radius;
         const ex = tx + Math.cos(endA) * target.radius;

@@ -26,7 +26,7 @@
     </agent>
 
     <agent id="parasita" displayName="PARASITA" avatarChar="P" color="#2A9E70" spinMax="400" mass="0.9" radius="19" friction="0.002" restitution="0.7" speed="230">
-      <ability basePulses="4" drainTotalRatio="0.04" maxFilamentsPerTarget="3" healRatio="0.5" pulseInterval="0.5" tentacleAngleSpread="0.55" />
+      <ability basePulses="4" drainTotalRatio="0.04" maxFilamentsPerTarget="3" healRatio="0.5" pulseInterval="0.5" tentacleAngleSpread="0.55" tentacleMaxFan="2.89" tentacleMaxFanParasite="5.75" tentacleMinSepAngle="0.4" tentaclePerpStride="11" tentaclePerpStridePerCount="2.2" />
     </agent>
 
     <agent id="tremor" displayName="TREMOR" avatarChar="T" color="#8070CC" spinMax="520" mass="1.1" radius="22" friction="0.0013" restitution="0.65" speed="200">

@@ -1,6 +1,6 @@
 import { ParticlePool } from './particles.js';
 import { Camera } from './camera.js';
-import { createArenaBackground, renderArenaForeground } from './arena.js';
+import { createArenaBackground, renderArenaBackground, renderArenaForeground } from './arena.js';
 import { createHud } from './hud.js';
 import { clamp, lerp } from './utils.js';
 
@@ -664,7 +664,7 @@ function update(dt) {
     if (impact > 0) {
       // Wall-seek: ao bater na borda, impulso linear para o inimigo mais próximo.
       // Cooldown compartilhado: um disparo por janela para toda a arena.
-      const W = cfg.wallSeek;
+      const W = cfg.wallSeek ?? {};
       if (W.enabled && W.impulse > 0 && !t.immovable && game.wallSeekCooldown <= 0) {
         let target = null;
         let bestD2 = Infinity;
@@ -690,8 +690,6 @@ function update(dt) {
 
       // Tremor reage a bordas
       if (typeof t.onArenaBoundary === 'function') t.onArenaBoundary(impact);
-      // Parasita: sacode leeches ao bater na arena
-      if (t.leeches && t.leeches.length) t.leeches = [];
     }
   }
 
@@ -733,7 +731,9 @@ function update(dt) {
 function render(alpha) {
   // Limpa fundo
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
-  ctx.drawImage(bgCanvas, 0, 0);
+  // Desenha o background retangular sempre no render.
+  // Isto garante que, mesmo com caches/estado antigo, não fica nenhum “círculo” no centro.
+  renderArenaBackground(ctx, WIDTH, HEIGHT, ARENA_RECT);
 
   renderArenaForeground(ctx, ARENA_RECT);
 
