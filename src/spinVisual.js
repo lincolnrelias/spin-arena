@@ -105,7 +105,8 @@ export function drawSpinTopHub(ctx, radius, palette = {}) {
 export function visualAngularVelocity(top, opts = {}) {
   const r = hpRatio(top);
   const minRatio = opts.minRatio ?? 0.12;
-  const base = opts.base ?? 22;
+  const mult = opts.mult ?? top?.game?.config?.spinVisualMult ?? 1;
+  const base = (opts.base ?? 22) * mult;
   const eased = minRatio + (1 - minRatio) * (r * r);
   return base * eased;
 }

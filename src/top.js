@@ -182,7 +182,9 @@ export class Top {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     // Rotação visual = leitor de "vida": HP cheio = giro confortável; HP baixo = desacelera
-    this.angle += visualAngularVelocity(this) * dt;
+    this.angle += visualAngularVelocity(this, {
+      mult: this.game?.config?.spinVisualMult ?? 3
+    }) * dt;
 
     // Atrito no chão (linear)
     // Damping linear mais suave para evitar que tops "morram no movimento".
@@ -190,10 +192,17 @@ export class Top {
     this.vx *= linearDamp;
     this.vy *= linearDamp;
 
-    // Speed factor global por agente: limita picos exagerados de velocidade linear.
+    // Speed floor/cap por agente:
+    // - floor: nunca deixa cair abaixo do speed base configurado
+    // - cap: limita picos exagerados de velocidade linear
     const speedNow = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+    const minSpeed = this.speed;
     const maxSpeed = this.speed * 2.4;
-    if (speedNow > maxSpeed && speedNow > 0.0001) {
+    if (speedNow > 0.0001 && speedNow < minSpeed) {
+      const s = minSpeed / speedNow;
+      this.vx *= s;
+      this.vy *= s;
+    } else if (speedNow > maxSpeed && speedNow > 0.0001) {
       const s = maxSpeed / speedNow;
       this.vx *= s;
       this.vy *= s;

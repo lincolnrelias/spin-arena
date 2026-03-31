@@ -132,6 +132,7 @@ let settings = null;
 let AGENT_STATS = new Map();
 
 const game = {
+  config: cfg,
   tops: [],
   shockwaves: [],
   particles: new ParticlePool(),
@@ -807,8 +808,10 @@ window.addEventListener('keydown', (e) => {
 (async function boot() {
   AGENT_STATS = await loadAgentStats();
   cfg = normalizeConfig(await loadConfigFirst());
+  game.config = cfg;
   settings = mountSettingsUI(cfg, (nextCfg) => {
     cfg = normalizeConfig(nextCfg);
+    game.config = cfg;
   });
   startNewMatch();
   requestAnimationFrame(loop);

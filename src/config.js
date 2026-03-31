@@ -2,7 +2,7 @@ export const CONFIG_VERSION = 1;
 
 export const DEFAULT_CONFIG = {
   version: CONFIG_VERSION,
-  // steering removido: o projeto já não usa esses parâmetros.
+  spinVisualMult: 3
 };
 
 function deepMerge(dst, src) {
@@ -23,6 +23,7 @@ export function normalizeConfig(cfg) {
   const out = structuredClone(DEFAULT_CONFIG);
   deepMerge(out, cfg);
   out.version = CONFIG_VERSION;
+  out.spinVisualMult = Math.max(0.1, Math.min(10, Number(out.spinVisualMult ?? DEFAULT_CONFIG.spinVisualMult) || DEFAULT_CONFIG.spinVisualMult));
   // Remove qualquer resíduo do antigo sistema de “steering”.
   delete out.steering;
 
@@ -70,8 +71,12 @@ function bindRangePair(rangeEl, numberEl, onChange) {
     rangeEl.value = String(v);
     numberEl.value = String(v);
   };
-  rangeEl.addEventListener('input', () => onChange(Number(rangeEl.value)));
-  numberEl.addEventListener('input', () => onChange(Number(numberEl.value)));
+  const applyRange = () => onChange(Number(rangeEl.value));
+  const applyNumber = () => onChange(Number(numberEl.value));
+  rangeEl.addEventListener('input', applyRange);
+  rangeEl.addEventListener('change', applyRange);
+  numberEl.addEventListener('input', applyNumber);
+  numberEl.addEventListener('change', applyNumber);
   return { sync };
 }
 
@@ -82,14 +87,25 @@ export function mountSettingsUI(initialCfg, onConfigChange) {
   const saveBtn = document.getElementById('cfg_save');
   const resetBtn = document.getElementById('cfg_reset');
   const importEl = document.getElementById('cfg_import');
+  const spinVisualMultRange = document.getElementById('cfg_spinVisualMult');
+  const spinVisualMultNum = document.getElementById('cfg_spinVisualMult_num');
 
   let cfg = normalizeConfig(initialCfg);
+  let spinVisualMultSync = null;
 
   const apply = () => {
     cfg = normalizeConfig(cfg);
+    if (spinVisualMultSync) spinVisualMultSync.sync(cfg.spinVisualMult);
     saveConfigToLocalStorage(cfg);
     onConfigChange(cfg);
   };
+  spinVisualMultSync = (spinVisualMultRange && spinVisualMultNum)
+    ? bindRangePair(spinVisualMultRange, spinVisualMultNum, (v) => {
+      cfg.spinVisualMult = v;
+      apply();
+    })
+    : null;
+  if (spinVisualMultSync) spinVisualMultSync.sync(cfg.spinVisualMult);
 
   const setOpen = (open) => {
     root.classList.toggle('open', open);
