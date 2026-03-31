@@ -7,6 +7,7 @@ import { clamp, lerp } from './utils.js';
 import { SpatialHash, resolveCollision, handleArenaBoundary, updateShockwaves, drawShockwaves, WAVE_POWER_SCALE } from './physics.js';
 import { loadConfigFirst, mountSettingsUI, normalizeConfig, DEFAULT_CONFIG } from './config.js';
 import { loadAgentStats } from './agentStats.js';
+import { SfxEngine } from './audio.js';
 
 import { Espelho } from './characters/espelho.js';
 import { Berserker } from './characters/berserker.js';
@@ -130,6 +131,7 @@ let bgCanvas = createArenaBackground(WIDTH, HEIGHT, ARENA_RECT);
 let cfg = structuredClone(DEFAULT_CONFIG);
 let settings = null;
 let AGENT_STATS = new Map();
+const sfx = new SfxEngine();
 
 const game = {
   config: cfg,
@@ -532,6 +534,8 @@ let countdownAge = 0;
 game.eventBus.on('death', ({ top, killer }) => {
   if (game.winnerTop) return; // já decidido
 
+  sfx.playElimination(top?.spinMax ?? 0);
+
   // Em 1v1: o vencedor é o único top ainda "alive".
   const remaining = game.tops.filter(t => t !== top && t.alive && !t.remove);
   const winner = remaining[0] ?? (killer && killer.alive ? killer : null);
@@ -549,6 +553,10 @@ game.eventBus.on('death', ({ top, killer }) => {
   }
 
   hud.setEventLog(`${winner.displayName} venceu o confronto!`);
+});
+
+game.eventBus.on('collision', ({ impactForce }) => {
+  sfx.playCollision(impactForce);
 });
 
 function setCountdownText(n) {
@@ -806,12 +814,15 @@ window.addEventListener('keydown', (e) => {
 
 // Boot: carrega config (localStorage -> /config.json -> defaults), monta UI e inicia match.
 (async function boot() {
+  sfx.attachUnlockListeners(window);
   AGENT_STATS = await loadAgentStats();
   cfg = normalizeConfig(await loadConfigFirst());
   game.config = cfg;
+  sfx.setMasterVolume(cfg.masterVolume);
   settings = mountSettingsUI(cfg, (nextCfg) => {
     cfg = normalizeConfig(nextCfg);
     game.config = cfg;
+    sfx.setMasterVolume(cfg.masterVolume);
   });
   startNewMatch();
   requestAnimationFrame(loop);

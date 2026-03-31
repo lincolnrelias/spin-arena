@@ -175,6 +175,10 @@ export function resolveCollision(a, b) {
   if (a && typeof a.onCollide === 'function') a.onCollide(b, impactForce, nx, ny);
   if (b && typeof b.onCollide === 'function') b.onCollide(a, impactForce, nx, ny);
 
+  if (a.game?.eventBus) {
+    a.game.eventBus.emit('collision', { a, b, impactForce, nx, ny });
+  }
+
   a.stats.collisions++;
   b.stats.collisions++;
 }
