@@ -5,35 +5,35 @@
   </common>
 
   <agents>
-    <agent id="espelho" displayName="ESPÉLHO" avatarChar="E" color="#A8C8E8" spinMax="800" mass="1.4" radius="26" friction="0.0008" restitution="0.95" speed="210">
+    <agent id="espelho" displayName="ESPÉLHO" avatarChar="E" color="#A8C8E8" spinMax="800" mass="1.4" radius="30" friction="0.0008" restitution="0.95" speed="210">
       <ability reflectBase="0.55" reflectStep="0.05" reflectCap="0.85" flashDuration="0.1" />
     </agent>
 
-    <agent id="berserker" displayName="BÉRSERKER" avatarChar="B" color="#E8593C" spinMax="500" mass="1.0" radius="22" friction="0.0015" restitution="0.8" speed="220">
-      <ability speedStep="0.15" spinTransferPerStack="0.08" maxStacks="10" furyMaxHpThreshold="0.2" crackDuration="0.22" emberRate="4" />
+    <agent id="berserker" displayName="BÉRSERKER" avatarChar="B" color="#E8593C" spinMax="500" mass="1.0" radius="28" friction="0.0015" restitution="0.8" speed="220">
+      <ability speedStep="0.18" spinTransferPerStack="0.12" maxStacks="10" furyMaxHpThreshold="0.2" crackDuration="0.22" emberRate="7" rageMax="60" rageDecayPerSec="0" rageGainBase="1.0" rageGainGrowth="0.0" rageGainCap="1.0" rageSpeedBonusMax="0.7" rageTransferBonusMax="1.0" rageHitDamageBonusMax="1.6" hitHealRatioBase="0.14" lowHpHitHealBonusMax="0.42" />
     </agent>
 
-    <agent id="coroa" displayName="COROA" avatarChar="C" color="#E8A020" spinMax="600" mass="1.2" radius="24" friction="0.0012" restitution="0.75" speed="205">
+    <agent id="coroa" displayName="COROA" avatarChar="C" color="#E8A020" spinMax="600" mass="1.2" radius="48" friction="0.0012" restitution="0.75" speed="205">
       <ability stackInterval="8" massPerStack="0.02" spinMaxPerStack="0.01" radiusPerStack="0.005" radiusCapMult="1.2" flashDuration="0.22" />
     </agent>
 
-    <agent id="fenda" displayName="FENDA" avatarChar="F" color="#D4537E" spinMax="700" mass="1.1" radius="23" friction="0.001" restitution="0.82" speed="215">
+    <agent id="fenda" displayName="FENDA" avatarChar="F" color="#D4537E" spinMax="700" mass="1.1" radius="46" friction="0.001" restitution="0.82" speed="215">
       <ability splitHpThreshold="0.3" splitSpinMult="0.5" splitMassMult="0.5" splitRadiusMult="0.7" maxGeneration="2" splitSpeedMult="0.6" />
     </agent>
 
-    <agent id="sombra" displayName="SOMBRA" avatarChar="S" color="#7B6FCC" spinMax="450" mass="0.85" radius="20" friction="0.0018" restitution="0.9" speed="240">
+    <agent id="sombra" displayName="SOMBRA" avatarChar="S" color="#7B6FCC" spinMax="450" mass="0.85" radius="40" friction="0.0018" restitution="0.9" speed="240">
       <ability ghostInterval="1.5" ghostMax="2" ghostHpRatio="0.15" ghostLife="3" />
     </agent>
 
-    <agent id="parasita" displayName="PARASITA" avatarChar="P" color="#2A9E70" spinMax="400" mass="0.9" radius="19" friction="0.002" restitution="0.7" speed="230">
+    <agent id="parasita" displayName="PARASITA" avatarChar="P" color="#2A9E70" spinMax="400" mass="0.9" radius="38" friction="0.002" restitution="0.7" speed="230">
       <ability basePulses="4" drainTotalRatio="0.04" maxFilamentsPerTarget="3" healRatio="0.5" pulseInterval="0.5" tentacleAngleSpread="0.55" tentacleMaxFan="2.89" tentacleMaxFanParasite="5.75" tentacleMinSepAngle="0.4" tentaclePerpStride="11" tentaclePerpStridePerCount="2.2" />
     </agent>
 
-    <agent id="tremor" displayName="TREMOR" avatarChar="T" color="#8070CC" spinMax="520" mass="1.1" radius="22" friction="0.0013" restitution="0.65" speed="200">
+    <agent id="tremor" displayName="TREMOR" avatarChar="T" color="#8070CC" spinMax="520" mass="1.1" radius="44" friction="0.0013" restitution="0.65" speed="200">
       <ability waveCooldown="0.6" />
     </agent>
 
-    <agent id="poco" displayName="POÇO" avatarChar="O" color="#1A8860" spinMax="650" mass="1.5" radius="25" friction="0.0009" restitution="0.72" speed="175">
+    <agent id="poco" displayName="POÇO" avatarChar="O" color="#1A8860" spinMax="650" mass="1.5" radius="50" friction="0.0009" restitution="0.72" speed="175">
       <ability gravityRadius="180" gravityStrength="8000" selfSpeedMult="0.7" />
     </agent>
   </agents>

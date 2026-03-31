@@ -2,7 +2,8 @@ export const CONFIG_VERSION = 1;
 
 export const DEFAULT_CONFIG = {
   version: CONFIG_VERSION,
-  spinVisualMult: 3
+  spinVisualMult: 3,
+  showHpRing: true
 };
 
 function deepMerge(dst, src) {
@@ -24,6 +25,7 @@ export function normalizeConfig(cfg) {
   deepMerge(out, cfg);
   out.version = CONFIG_VERSION;
   out.spinVisualMult = Math.max(0.1, Math.min(10, Number(out.spinVisualMult ?? DEFAULT_CONFIG.spinVisualMult) || DEFAULT_CONFIG.spinVisualMult));
+  out.showHpRing = out.showHpRing !== false;
   // Remove qualquer resíduo do antigo sistema de “steering”.
   delete out.steering;
 
@@ -89,6 +91,7 @@ export function mountSettingsUI(initialCfg, onConfigChange) {
   const importEl = document.getElementById('cfg_import');
   const spinVisualMultRange = document.getElementById('cfg_spinVisualMult');
   const spinVisualMultNum = document.getElementById('cfg_spinVisualMult_num');
+  const showHpRingEl = document.getElementById('cfg_showHpRing');
 
   let cfg = normalizeConfig(initialCfg);
   let spinVisualMultSync = null;
@@ -96,6 +99,7 @@ export function mountSettingsUI(initialCfg, onConfigChange) {
   const apply = () => {
     cfg = normalizeConfig(cfg);
     if (spinVisualMultSync) spinVisualMultSync.sync(cfg.spinVisualMult);
+    if (showHpRingEl) showHpRingEl.checked = cfg.showHpRing !== false;
     saveConfigToLocalStorage(cfg);
     onConfigChange(cfg);
   };
@@ -106,6 +110,13 @@ export function mountSettingsUI(initialCfg, onConfigChange) {
     })
     : null;
   if (spinVisualMultSync) spinVisualMultSync.sync(cfg.spinVisualMult);
+  if (showHpRingEl) {
+    showHpRingEl.checked = cfg.showHpRing !== false;
+    showHpRingEl.addEventListener('change', () => {
+      cfg.showHpRing = !!showHpRingEl.checked;
+      apply();
+    });
+  }
 
   const setOpen = (open) => {
     root.classList.toggle('open', open);

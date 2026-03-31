@@ -71,14 +71,14 @@ function makeCharacterConfig(kind) {
   if (!raw) {
     // Fallback de segurança caso agents.xml não carregue.
     const legacy = {
-      espelho: { displayName: 'ESPELHO', avatarChar: 'E', color: '#A8C8E8', spinMax: 800, speed: 210, mass: 1.4, radius: 26, friction: 0.0008, restitution: 0.95, ability: {} },
-      berserker: { displayName: 'BERSERKER', avatarChar: 'B', color: '#E8593C', spinMax: 500, speed: 220, mass: 1.0, radius: 22, friction: 0.0015, restitution: 0.8, ability: {} },
-      coroa: { displayName: 'COROA', avatarChar: 'C', color: '#E8A020', spinMax: 600, speed: 205, mass: 1.2, radius: 24, friction: 0.0012, restitution: 0.75, ability: {} },
-      fenda: { displayName: 'FENDA', avatarChar: 'F', color: '#D4537E', spinMax: 700, speed: 215, mass: 1.1, radius: 23, friction: 0.001, restitution: 0.82, ability: {} },
-      sombra: { displayName: 'SOMBRA', avatarChar: 'S', color: '#7B6FCC', spinMax: 450, speed: 240, mass: 0.85, radius: 20, friction: 0.0018, restitution: 0.9, ability: {} },
-      parasita: { displayName: 'PARASITA', avatarChar: 'P', color: '#2A9E70', spinMax: 400, speed: 230, mass: 0.9, radius: 19, friction: 0.002, restitution: 0.7, ability: {} },
-      tremor: { displayName: 'TREMOR', avatarChar: 'T', color: '#8070CC', spinMax: 520, speed: 200, mass: 1.1, radius: 22, friction: 0.0013, restitution: 0.65, ability: {} },
-      poco: { displayName: 'POCO', avatarChar: 'O', color: '#1A8860', spinMax: 650, speed: 175, mass: 1.5, radius: 25, friction: 0.0009, restitution: 0.72, ability: {} }
+      espelho: { displayName: 'ESPELHO', avatarChar: 'E', color: '#A8C8E8', spinMax: 800, speed: 210, mass: 1.4, radius: 52, friction: 0.0008, restitution: 0.95, ability: {} },
+      berserker: { displayName: 'BERSERKER', avatarChar: 'B', color: '#E8593C', spinMax: 500, speed: 220, mass: 1.0, radius: 44, friction: 0.0015, restitution: 0.8, ability: {} },
+      coroa: { displayName: 'COROA', avatarChar: 'C', color: '#E8A020', spinMax: 600, speed: 205, mass: 1.2, radius: 48, friction: 0.0012, restitution: 0.75, ability: {} },
+      fenda: { displayName: 'FENDA', avatarChar: 'F', color: '#D4537E', spinMax: 700, speed: 215, mass: 1.1, radius: 46, friction: 0.001, restitution: 0.82, ability: {} },
+      sombra: { displayName: 'SOMBRA', avatarChar: 'S', color: '#7B6FCC', spinMax: 450, speed: 240, mass: 0.85, radius: 40, friction: 0.0018, restitution: 0.9, ability: {} },
+      parasita: { displayName: 'PARASITA', avatarChar: 'P', color: '#2A9E70', spinMax: 400, speed: 230, mass: 0.9, radius: 38, friction: 0.002, restitution: 0.7, ability: {} },
+      tremor: { displayName: 'TREMOR', avatarChar: 'T', color: '#8070CC', spinMax: 520, speed: 200, mass: 1.1, radius: 44, friction: 0.0013, restitution: 0.65, ability: {} },
+      poco: { displayName: 'POCO', avatarChar: 'O', color: '#1A8860', spinMax: 650, speed: 175, mass: 1.5, radius: 50, friction: 0.0009, restitution: 0.72, ability: {} }
     };
     if (!legacy[kind]) return null;
     return { kind, ...legacy[kind] };
@@ -748,7 +748,7 @@ function render(alpha) {
   // Orçamento visual
   const agentCount = game.tops.length;
   const showShadow = agentCount <= 8;
-  const showHpRing = agentCount <= 20;
+  const showHpRing = (cfg.showHpRing !== false) && agentCount <= 20;
 
   // Tops (render com interpolação)
   for (const t of game.tops) {
